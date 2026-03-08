@@ -1,0 +1,3 @@
+ERROR PaymentService timeout
+ERROR Redis connection failed
+INFO Request completed
