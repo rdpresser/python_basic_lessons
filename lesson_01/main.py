@@ -4,49 +4,39 @@ from pathlib import Path
 import requests
 from requests.exceptions import RequestException
 
-print("Hello, Rodrigo!")
-
-name = "Rodrigo"
-age = 45
-
-print("My name is " + name + " and I am " + str(age) + " years old.")
-
-numbers = [1, 2, 3, 4, 5]
-print("The numbers are: " + str(numbers))
-
-user = {
-    "name": "Rodrigo",
-    "age": 45
+NAME = "Rodrigo"
+AGE = 45
+NUMBERS = [1, 2, 3, 4, 5]
+USER = {
+    "name": NAME,
+    "age": AGE,
 }
-
-print("User info: " + user["name"] + ", " + str(user["age"]) + " years old.")
-
-logs = [
-    "error: something went wrong",
-    "error : failed to connect to database",
-    "warning: low disk space"
-]
-
-# for log in logs:
-#     if "error" in log:
-#         print("Error found: " + log)
-
-
-# logs_path = Path(__file__).with_name("logs.txt")
-# with logs_path.open() as file:
-#     logs = file.readlines()
-
-# print(logs)
+GITHUB_API_URL = "https://api.github.com"
+COINGECKO_API_URL = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+DEFAULT_OPENAI_MODEL = "gpt-5-mini"
 
 def count_errors(logs: list[str]) -> int:
-    count = 0
-    for log in logs:
-        if is_error(log):
-            count += 1
-    return count
+    return sum(1 for log in logs if is_error(log))
+
 
 def is_error(log: str) -> bool:
     return "error" in log.casefold()
+
+
+def print_intro() -> None:
+    print("Hello, Rodrigo!")
+    print("My name is " + NAME + " and I am " + str(AGE) + " years old.")
+    print("The numbers are: " + str(NUMBERS))
+    print("User info: " + USER["name"] + ", " + str(USER["age"]) + " years old.")
+
+
+def read_logs(log_file: Path) -> list[str]:
+    try:
+        with log_file.open(encoding="utf-8") as file:
+            return file.readlines()
+    except FileNotFoundError:
+        print("logs.txt not found at: " + str(log_file))
+        return []
 
 
 def load_env_file(env_file: Path) -> None:
@@ -64,48 +54,42 @@ def load_env_file(env_file: Path) -> None:
         if key and value:
             os.environ[key] = value
 
-logs_path = Path(__file__).with_name("logs.txt")
-with logs_path.open(encoding="utf-8") as file:
-    logs = file.readlines()
+def fetch_github_status() -> None:
+    try:
+        response = requests.get(GITHUB_API_URL, timeout=10)
+        response.raise_for_status()
+        print(response.status_code)
+    except RequestException as exc:
+        print("GitHub request failed: " + str(exc))
 
-# for log in logs:
-#     if is_error(log):
-#         print("Error found in file: " + log.rstrip())
-error_count = count_errors(logs)
-print("Total errors found: " + str(error_count))
 
-try:
-    response = requests.get("https://api.github.com", timeout=10)
-    response.raise_for_status()
-    print(response.status_code)
-except RequestException as exc:
-    print("GitHub request failed: " + str(exc))
+def fetch_bitcoin_price() -> None:
+    try:
+        response = requests.get(COINGECKO_API_URL, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        print("Current Bitcoin price in USD: " + str(data["bitcoin"]["usd"]))
+    except RequestException as exc:
+        print("Bitcoin API request failed: " + str(exc))
+    except (KeyError, TypeError, ValueError) as exc:
+        print("Unexpected Bitcoin API response: " + str(exc))
 
-try:
-    response = requests.get(
-        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
-        timeout=10,
-    )
-    response.raise_for_status()
-    data = response.json()
-    print("Current Bitcoin price in USD: " + str(data["bitcoin"]["usd"]))
-except RequestException as exc:
-    print("Bitcoin API request failed: " + str(exc))
-except (KeyError, TypeError, ValueError) as exc:
-    print("Unexpected Bitcoin API response: " + str(exc))
 
-load_env_file(Path(__file__).with_name(".env"))
-openai_api_key = os.getenv("OPENAI_API_KEY")
+def run_openai_example(env_file: Path) -> None:
+    load_env_file(env_file)
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    openai_model = os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL).strip() or DEFAULT_OPENAI_MODEL
 
-if not openai_api_key:
-    print("OPENAI_API_KEY not found in .env. Add your key to run the OpenAI example.")
-else:
+    if not openai_api_key:
+        print("OPENAI_API_KEY not found in .env. Add your key to run the OpenAI example.")
+        return
+
     try:
         from openai import OpenAI
 
         client = OpenAI(api_key=openai_api_key)
         response = client.responses.create(
-            model="gpt-5-mini",
+            model=openai_model,
             input="Explain the difference between a list and a tuple in Python.",
         )
         print("AI response: " + response.output_text)
@@ -121,3 +105,21 @@ else:
             print("OPENAI_API_KEY invalida. Confira a chave no arquivo .env.")
         else:
             print("OpenAI request failed: " + error_text)
+
+
+def main() -> None:
+    print_intro()
+
+    project_root = Path(__file__).resolve().parent.parent
+    logs_path = Path(__file__).with_name("logs.txt")
+    logs = read_logs(logs_path)
+    error_count = count_errors(logs)
+    print("Total errors found: " + str(error_count))
+
+    fetch_github_status()
+    fetch_bitcoin_price()
+    run_openai_example(project_root / ".env")
+
+
+if __name__ == "__main__":
+    main()
